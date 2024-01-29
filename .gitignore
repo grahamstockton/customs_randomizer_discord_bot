@@ -1,4 +1,5 @@
 Secrets.toml
 Cargo.lock
+DS_Store
 /target/
 /debug/
