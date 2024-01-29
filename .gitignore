@@ -1,0 +1,4 @@
+Secrets.toml
+Cargo.lock
+/target/
+/debug/
