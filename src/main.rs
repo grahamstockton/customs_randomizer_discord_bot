@@ -36,7 +36,7 @@ async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shuttle
     // get list of jungle champs from config file
     let jg_champs: HashSet<String>;
     {
-        let file = File::open(Path::new("JgChamps.toml")).unwrap();
+        let file = File::open(Path::new("JgChamps.txt")).unwrap();
         let reader = BufReader::new(&file);
         jg_champs = reader.lines().collect::<Result<_, _>>().unwrap();
     }
