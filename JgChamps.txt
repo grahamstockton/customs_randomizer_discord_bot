@@ -1,0 +1,66 @@
+Rengar
+Ivern
+Graves
+Bel’Veth
+Kayn
+Kha’Zix
+Lillia
+Master Yi
+Evelynn
+Briar
+Zac
+Brand
+Jax
+Lee Sin
+Viego
+Gwen
+Ekko
+Warwick
+Trundle
+Xin Zhao
+Kindred
+Nocturne
+Udyr
+Taliyah
+Rammus
+Vi
+Poppy
+Nunu
+Taric
+Karthus
+Rek’Sai
+Talon
+Maokai
+Gragas
+Fiddlesticks
+Hecarim
+Zed
+Teemo
+Mordekaiser
+Rumble
+Rell
+Jarvan IV
+Elise
+Shaco
+Yorick
+Nidalee
+Singed
+Neeko
+Amumu
+Sylas
+Qiyana
+Morgana
+Sejuani
+Naafiri
+Skarner
+Tryndamere
+Dr. Mundo
+Twitch
+Diana
+Volibear
+Pantheon
+Olaf
+Shyvana
+Sion
+Wukong
+Cho’Gath
