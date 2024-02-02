@@ -1,6 +1,7 @@
 mod commands;
 mod data;
 mod riot_api;
+mod summoner_data;
 
 use std::collections::HashSet;
 

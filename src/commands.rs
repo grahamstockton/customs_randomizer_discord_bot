@@ -1,7 +1,9 @@
 use crate::data::MutexData;
 use crate::riot_api::RiotApiAccessor;
+use crate::summoner_data::SummonerData;
 use crate::Context;
-use anyhow::{Context as anyhow_Context, Error, Result};
+use anyhow::{Error, Result};
+use futures::{stream::FuturesUnordered, StreamExt};
 use multimap::MultiMap;
 use rand::rngs::ThreadRng;
 use rand::seq::SliceRandom;
@@ -138,49 +140,33 @@ async fn get_player_champion_map(
     // get free to play champs list for both new (level < 10) and regular players
     let rotation_object = riot_client.get_rotation_champs().await?;
 
-    for player in players {
-        // split summoner name for lookup
-        let mut parts = player.split('#');
-        let name = parts
-            .next()
-            .with_context(|| format!("error splitting player name: {}", player))?;
-        let tagline = parts
-            .next()
-            .with_context(|| format!("error splitting player name: {}", player))?;
+    // make calls concurrently to speed up initial deta collection
+    let mut futures =
+        FuturesUnordered::from_iter(players.iter().map(|p| SummonerData::new(p, riot_client)));
+    while let Some(s) = futures.next().await {
+        let summoner_data = s.unwrap();
+        let riot_id = summoner_data.get_riot_id();
 
-        // get account data from riot api
-        let account = riot_client.get_account(name, tagline).await?;
+        // get player free to play champs list
+        let rotation_champs: Vec<String> = if rotation_object.max_new_player_level as i64
+            > summoner_data.summoner.summoner_level
+        {
+            rotation_object
+                .free_champion_ids_for_new_players
+                .iter()
+                .map(|e| e.name().unwrap_or("UNKOWN").to_owned())
+                .collect()
+        } else {
+            rotation_object
+                .free_champion_ids
+                .iter()
+                .map(|e| e.name().unwrap_or("UNKNOWN").to_owned())
+                .collect()
+        };
 
-        // get summoner data from account data. Needed for summoner level
-        let summoner = riot_client.get_summoner(&account.puuid).await?;
-
-        // get free to play champs for this summoner
-        let rotation_champs: Vec<String> =
-            if rotation_object.max_new_player_level as i64 > summoner.summoner_level {
-                rotation_object
-                    .free_champion_ids_for_new_players
-                    .iter()
-                    .map(|e| e.name().unwrap_or("UNKOWN").to_owned())
-                    .collect()
-            } else {
-                rotation_object
-                    .free_champion_ids
-                    .iter()
-                    .map(|e| e.name().unwrap_or("UNKNOWN").to_owned())
-                    .collect()
-            };
-
-        // get mastered_champs for that puuid from riot api
-        let mastered_champs: Vec<String> = riot_client
-            .get_mastered_champs(&account.puuid)
-            .await?
-            .iter()
-            .map(|e| e.champion_id.name().unwrap_or("UNKNOWN").to_owned())
-            .collect();
-
-        // add both sets of champs to summoner champ map
-        return_map.insert_many(player.to_string(), rotation_champs);
-        return_map.insert_many(player.to_string(), mastered_champs);
+        // create return map from mastered champs and free to play champs
+        return_map.insert_many(riot_id.clone(), summoner_data.mastered_champs);
+        return_map.insert_many(riot_id, rotation_champs);
     }
 
     Ok(return_map)
