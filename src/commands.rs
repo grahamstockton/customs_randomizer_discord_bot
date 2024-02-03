@@ -1,4 +1,5 @@
 use crate::data::MutexData;
+use crate::errors::InvalidInputError;
 use crate::riot_api::RiotApiAccessor;
 use crate::summoner_data::SummonerData;
 use crate::Context;
@@ -16,17 +17,6 @@ const HELP_MESSAGE: &str =
 The list should be of the form \"summ1#NA1,summ2#NA1,summ3#JP1,summ4#YAY,summ5#h/summ6#NA1,summ7#B,summ8#1,summ9#NA1,summ10#NA1\".
 Because Riot is dumb, you need to use your full id (e.g. MyId#Tagline). For most, the tagline is #NA1.
 If you have already entered the list of summoners during this session, you can use /reroll. Have fun! :3c";
-
-#[derive(Debug, Clone)]
-pub struct InvalidInputError(String);
-
-impl std::fmt::Display for InvalidInputError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for InvalidInputError {}
 
 #[poise::command(slash_command)]
 pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
@@ -46,6 +36,7 @@ pub async fn new_game(
     ctx.say("Generating randomized champions").await?;
 
     // create players lists
+    // TODO: move this into a function
     let mut parts = input.split('/');
     let left_part = parts.next().expect("Error splitting command string");
     let right_part = parts
@@ -107,7 +98,8 @@ pub async fn reroll(ctx: Context<'_>) -> Result<(), Error> {
         mutex_copy = data.clone();
     }
 
-    // check if uninitialized TODO: fix the model and make this better
+    // check if uninitialized
+    // If this project becomes bigger, should probably create a better model and validation
     if mutex_copy.team_1.is_empty() {
         ctx.say("Teams are uninitialized. Please run /new_game. For more details, use /help")
             .await?;

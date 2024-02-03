@@ -1,5 +1,6 @@
 mod commands;
 mod data;
+mod errors;
 mod riot_api;
 mod summoner_data;
 
