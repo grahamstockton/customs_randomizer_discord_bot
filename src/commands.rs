@@ -1,16 +1,14 @@
+use crate::choose_champions::ChooseAndRemoveManager;
 use crate::data::MutexData;
 use crate::errors::InvalidInputError;
 use crate::riot_api::RiotApiAccessor;
 use crate::summoner_data::SummonerData;
+use crate::util::get_prettified_result;
 use crate::Context;
 use anyhow::{Error, Result};
 use futures::{stream::FuturesUnordered, StreamExt};
 use multimap::MultiMap;
-use rand::rngs::ThreadRng;
-use rand::seq::SliceRandom;
-use rand::thread_rng;
-use std::collections::{HashMap, HashSet};
-use tabled::{builder::Builder as TableBuilder, settings::Width};
+use std::collections::HashSet;
 
 const HELP_MESSAGE: &str =
     "To randomize champs, type /new_game followed by lists of summoners for both teams.
@@ -53,11 +51,7 @@ pub async fn new_game(
     }
 
     // get a copy of data inside the mutex
-    let mutex_copy: MutexData;
-    {
-        let data = ctx.data().mutex.lock().unwrap();
-        mutex_copy = data.clone();
-    }
+    let mutex_copy = ctx.data().clone_mutex_data();
 
     // update data if teams have changed or this is the first roll
     let mut player_champ_map = mutex_copy.player_champ_map;
@@ -66,24 +60,26 @@ pub async fn new_game(
         let players: HashSet<&String> = team_1.union(&team_2).collect();
         player_champ_map = get_player_champion_map(&players, &ctx.data().riot_client).await?;
 
-        // update mutex
-        {
-            let mut data = ctx.data().mutex.lock().unwrap();
-            *data = MutexData {
-                team_1: team_1.clone(),
-                team_2: team_2.clone(),
-                player_champ_map: player_champ_map.clone(),
-            };
-        }
+        // write over mutex
+        ctx.data().write_mutex_data(MutexData {
+            team_1: team_1.clone(),
+            team_2: team_2.clone(),
+            player_champ_map: player_champ_map.clone(),
+        });
     }
 
+    // instantiate champ select manager struct
+    let mut choose_remove_manager = ChooseAndRemoveManager::new(
+        player_champ_map,
+        team_1.clone(),
+        team_2.clone(),
+        ctx.data().jg_champs.clone(),
+    );
+    let result = choose_remove_manager.select_champs_with_removal();
+
     // tell the requester the champ selection
-    ctx.say(get_prettified_result(
-        &team_1,
-        &team_2,
-        &select_champs_and_remove(&team_1, &team_2, player_champ_map, &ctx.data().jg_champs),
-    ))
-    .await?;
+    ctx.say(get_prettified_result(&team_1, &team_2, &result))
+        .await?;
 
     Ok(())
 }
@@ -92,11 +88,7 @@ pub async fn new_game(
 #[poise::command(slash_command)]
 pub async fn reroll(ctx: Context<'_>) -> Result<(), Error> {
     // read from mutex
-    let mutex_copy: MutexData;
-    {
-        let data = ctx.data().mutex.lock().unwrap();
-        mutex_copy = data.clone();
-    }
+    let mutex_copy = ctx.data().clone_mutex_data();
 
     // check if uninitialized
     // If this project becomes bigger, should probably create a better model and validation
@@ -106,16 +98,20 @@ pub async fn reroll(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     }
 
+    // initialize champ select manager struct
+    let mut choose_remove_manager = ChooseAndRemoveManager::new(
+        mutex_copy.player_champ_map,
+        mutex_copy.team_1.clone(),
+        mutex_copy.team_2.clone(),
+        ctx.data().jg_champs.clone(),
+    );
+    let result = choose_remove_manager.select_champs_with_removal();
+
     // tell the requester the champ selection
     ctx.say(get_prettified_result(
         &mutex_copy.team_1,
         &mutex_copy.team_2,
-        &select_champs_and_remove(
-            &mutex_copy.team_1,
-            &mutex_copy.team_2,
-            mutex_copy.player_champ_map,
-            &ctx.data().jg_champs,
-        ),
+        &result,
     ))
     .await?;
 
@@ -136,7 +132,7 @@ async fn get_player_champion_map(
     let mut futures =
         FuturesUnordered::from_iter(players.iter().map(|p| SummonerData::new(p, riot_client)));
     while let Some(s) = futures.next().await {
-        let summoner_data = s.unwrap();
+        let summoner_data = s.expect("summoner data contents not found");
         let riot_id = summoner_data.get_riot_id();
 
         // get player free to play champs list
@@ -146,7 +142,7 @@ async fn get_player_champion_map(
             rotation_object
                 .free_champion_ids_for_new_players
                 .iter()
-                .map(|e| e.name().unwrap_or("UNKOWN").to_owned())
+                .map(|e| e.name().unwrap_or("UNKNOWN").to_owned())
                 .collect()
         } else {
             rotation_object
@@ -162,94 +158,4 @@ async fn get_player_champion_map(
     }
 
     Ok(return_map)
-}
-
-// method containing shared logic between new_game and reroll
-fn select_champs_and_remove(
-    team_1: &HashSet<String>,
-    team_2: &HashSet<String>,
-    mut champ_map: MultiMap<String, String>,
-    jg_champs: &HashSet<String>,
-) -> HashMap<String, String> {
-    let mut rng = thread_rng();
-
-    let ref_map = champ_map.clone();
-    let mut result: HashMap<String, String> = ref_map
-        .iter_all()
-        .map(|(e, v)| (e.to_owned(), choose_and_remove(&mut champ_map, v, &mut rng)))
-        .collect();
-
-    // ensure team has a jg champ
-    for team in [team_1, team_2].iter() {
-        apply_jg_requirement(team, &mut result, &mut champ_map, jg_champs, &mut rng);
-    }
-
-    result
-}
-
-// verify that team has a jg. If not, add one by randomly replacing a team member's champ
-fn apply_jg_requirement(
-    team: &HashSet<String>,
-    result: &mut HashMap<String, String>,
-    champ_map: &mut MultiMap<String, String>,
-    jg_champs: &HashSet<String>,
-    rng: &mut ThreadRng,
-) {
-    if !result.iter().any(|(_, v)| jg_champs.contains(v)) {
-        let mut shuffled_team: Vec<&String> = team.iter().collect();
-        shuffled_team.shuffle(rng);
-
-        for player in shuffled_team {
-            let player_jg_champs: Vec<String> = champ_map
-                .get_vec(player)
-                .unwrap()
-                .iter()
-                .map(|s| s.to_owned())
-                .filter(|c| jg_champs.contains(c))
-                .collect();
-
-            if !player_jg_champs.is_empty() {
-                result.insert(
-                    player.to_owned(),
-                    player_jg_champs.choose(rng).unwrap().to_owned(),
-                );
-
-                // return early with updated jg
-                return;
-            }
-        }
-    }
-}
-
-// choose randomly from a vector and then eliminate the value for all keys
-// I considered things like a surjective mapping, but those are slower because hashes don't work
-fn choose_and_remove(
-    champ_map: &mut MultiMap<String, String>,
-    choose_vec: &Vec<String>,
-    rng: &mut ThreadRng,
-) -> String {
-    let c = choose_vec.choose(rng).unwrap();
-    let m = champ_map.clone();
-    for k in m.keys() {
-        let v = champ_map.get_vec_mut(k).unwrap();
-        if let Some(found_idx) = v.iter().position(|r| r == c) {
-            v.remove(found_idx);
-        }
-    }
-
-    c.to_owned()
-}
-
-// generate a string for a text response to user
-fn get_prettified_result(
-    team_1: &HashSet<String>,
-    team_2: &HashSet<String>,
-    selection: &HashMap<String, String>,
-) -> String {
-    let mut builder = TableBuilder::default();
-    for (left, right) in team_1.iter().zip(team_2) {
-        builder.push_record(vec![left, &selection[left], right, &selection[right]]);
-    }
-
-    builder.build().with(Width::justify(25)).to_string()
 }

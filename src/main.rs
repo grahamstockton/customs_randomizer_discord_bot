@@ -1,8 +1,10 @@
+mod choose_champions;
 mod commands;
 mod data;
 mod errors;
 mod riot_api;
 mod summoner_data;
+mod util;
 
 use std::collections::HashSet;
 

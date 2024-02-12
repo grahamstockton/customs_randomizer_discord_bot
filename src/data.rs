@@ -35,4 +35,12 @@ impl Data {
             jg_champs,
         }
     }
+
+    pub fn clone_mutex_data(&self) -> MutexData {
+        self.mutex.lock().unwrap().clone()
+    }
+
+    pub fn write_mutex_data(&self, data: MutexData) {
+        *self.mutex.lock().unwrap() = data;
+    }
 }
