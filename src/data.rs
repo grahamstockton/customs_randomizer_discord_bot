@@ -1,6 +1,7 @@
 use crate::riot_api::RiotApiAccessor;
 use multimap::MultiMap;
 use riven::RiotApi;
+use serde_json::{Map, Value};
 use std::{collections::HashSet, sync::Mutex};
 
 // Context data object for poise. Gets passed to every command and holds state for our program
@@ -15,6 +16,7 @@ pub struct Data {
     pub mutex: Mutex<MutexData>,
     pub riot_client: RiotApiAccessor,
     pub jg_champs: HashSet<String>,
+    pub pseudonyms: Map<String, Value>,
 }
 
 impl MutexData {
@@ -28,11 +30,12 @@ impl MutexData {
 }
 
 impl Data {
-    pub fn new(riot_client: RiotApi, jg_champs: HashSet<String>) -> Self {
+    pub fn new(riot_client: RiotApi, jg_champs: HashSet<String>, pseudonyms: Map<String, Value>) -> Self {
         Self {
             mutex: Mutex::new(MutexData::new()),
             riot_client: RiotApiAccessor::new(riot_client),
             jg_champs,
+            pseudonyms
         }
     }
 

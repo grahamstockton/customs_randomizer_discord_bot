@@ -1,6 +1,5 @@
-use crate::choose_champions::ChooseAndRemoveManager;
+use crate::{choose_champions::ChooseAndRemoveManager, util::parse_and_validate};
 use crate::data::MutexData;
-use crate::errors::InvalidInputError;
 use crate::riot_api::RiotApiAccessor;
 use crate::summoner_data::SummonerData;
 use crate::util::get_prettified_result;
@@ -13,8 +12,9 @@ use std::collections::HashSet;
 const HELP_MESSAGE: &str =
     "To randomize champs, type /new_game followed by lists of summoners for both teams.
 The list should be of the form \"summ1#NA1,summ2#NA1,summ3#JP1,summ4#YAY,summ5#h/summ6#NA1,summ7#B,summ8#1,summ9#NA1,summ10#NA1\".
-Because Riot is dumb, you need to use your full id (e.g. MyId#Tagline). For most, the tagline is #NA1.
-If you have already entered the list of summoners during this session, you can use /reroll. Have fun! :3c";
+Because Riot is dumb, you need to use your full id (e.g. MyId#Tagline). For most, the tagline is #NA1. If you are a friend of the
+bot and have a pseudonym registered, you can use that instead of your full id.
+Once you have entered list of summoners once, you can use /reroll instead of re-entering. Have fun! :3c";
 
 #[poise::command(slash_command)]
 pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
@@ -33,22 +33,8 @@ pub async fn new_game(
 ) -> Result<(), Error> {
     ctx.say("Generating randomized champions").await?;
 
-    // create players lists
-    // TODO: move this into a function
-    let mut parts = input.split('/');
-    let left_part = parts.next().expect("Error splitting command string");
-    let right_part = parts
-        .next()
-        .expect("Unable to separate teams. See formatting rules with /help");
-    let team_1: HashSet<String> = left_part.trim().split(',').map(|e| e.to_owned()).collect();
-    let team_2: HashSet<String> = right_part.trim().split(',').map(|e| e.to_owned()).collect();
-
-    // validate inputs
-    if !(team_1.len() == 5 && team_2.len() == 5) {
-        return Err(Error::from(InvalidInputError(String::from(
-            "Failed to separate teams. Please see /help for formatting rules",
-        ))));
-    }
+    // split input into teams
+    let (team_1, team_2) = parse_and_validate(&input, &ctx.data().pseudonyms)?;
 
     // get a copy of data inside the mutex
     let mutex_copy = ctx.data().clone_mutex_data();

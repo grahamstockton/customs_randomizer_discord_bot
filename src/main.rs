@@ -7,16 +7,18 @@ mod summoner_data;
 mod util;
 
 use std::collections::HashSet;
+use std::fs::File;
+use std::io::BufRead;
 
 use anyhow::Context as _;
 use anyhow::Error;
 use data::Data;
 use poise::serenity_prelude as serenity;
 use riven::RiotApi;
+use serde_json::Value;
 use shuttle_secrets::SecretStore;
 use shuttle_serenity::ShuttleSerenity;
-use std::fs::File;
-use std::io::BufRead;
+use std::fs;
 use std::io::BufReader;
 use std::path::Path;
 
@@ -44,6 +46,11 @@ async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shuttle
         jg_champs = reader.lines().collect::<Result<_, _>>().unwrap();
     }
 
+    // get list of player pseudonyms from config file
+    let config = fs::read_to_string("pseudonym.json")?;
+    let parsed: Value = serde_json::from_str(&config).unwrap();
+    let pseudonyms = parsed.as_object().unwrap().clone();
+
     // initialize riot api
     let riot_client = RiotApi::new(riot_api_key);
 
@@ -63,7 +70,7 @@ async fn poise(#[shuttle_secrets::Secrets] secret_store: SecretStore) -> Shuttle
                     poise::builtins::create_application_commands(&framework.options().commands);
                 serenity::Command::set_global_commands(ctx, create_commands).await?;
 
-                Ok(Data::new(riot_client, jg_champs))
+                Ok(Data::new(riot_client, jg_champs, pseudonyms))
             })
         })
         .build();
