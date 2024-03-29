@@ -67,7 +67,11 @@ impl ChooseAndRemoveManager {
         team: &HashSet<String>,
         result: &mut HashMap<String, String>, // MUTATES THIS FIELD
     ) {
-        if !result.iter().any(|(_, v)| self.jg_champs.contains(v)) {
+        if !self.team_has_jg(team, result) {
+            // notify via stdout
+            println!("replacing for jg champ");
+            println!("Initial result: {:?}", result);
+
             let mut shuffled_team: Vec<&String> = team.iter().collect();
             shuffled_team.shuffle(&mut thread_rng());
 
@@ -81,19 +85,24 @@ impl ChooseAndRemoveManager {
                     .filter(|c| self.jg_champs.contains(c))
                     .collect();
 
+                let new_jg_champ = player_jg_champs
+                    .choose(&mut thread_rng())
+                    .expect("error unwrapping random choice")
+                    .to_owned();
+
                 if !player_jg_champs.is_empty() {
-                    result.insert(
-                        player.to_owned(),
-                        player_jg_champs
-                            .choose(&mut thread_rng())
-                            .expect("error unwrapping random choice")
-                            .to_owned(),
-                    );
+                    result.insert(player.to_owned(), new_jg_champ);
+                    println!("New result: {:?}", result);
 
                     // return early with updated jg
                     return;
                 }
             }
         }
+    }
+
+    fn team_has_jg(&self, team: &HashSet<String>, result: &mut HashMap<String, String>) -> bool {
+        team.iter()
+            .any(|p| self.jg_champs.contains(result.get(p).unwrap()))
     }
 }

@@ -17,11 +17,11 @@ impl SummonerData {
         let mut parts = player.split('#');
         let name = parts
             .next()
-            .expect("Failed to split summoner name")
+            .expect(&format!("Failed to split summoner name {:?}", player))
             .to_owned();
         let tagline = parts
             .next()
-            .expect("Failed to split summoner name")
+            .expect(&format!("Failed to split summoner name {:?}", player))
             .to_owned();
 
         // get account data from riot api
